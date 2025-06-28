@@ -18,8 +18,8 @@ classifiers = [
 ]
 
 [project.urls]
-Repository = "https://github.com/sauravniraula/fastembed-vectorstore"
-Issues = "https://github.com/sauravniraula/fastembed-vectorstore/issues"
+Repository = "https://github.com/sauravniraula/fastembed_vectorstore"
+Issues = "https://github.com/sauravniraula/fastembed_vectorstore/issues"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
