@@ -1,10 +1,12 @@
 # FastEmbed VectorStore
 
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?style=flat-square&logo=github)](https://github.com/sauravniraula/fastembed_vectorstore)
+
 A high-performance, Rust-based in-memory vector store with FastEmbed integration for Python applications.
 
 ## Overview
 
-FastEmbed VectorStore is a lightweight, fast vector database that leverages the power of Rust and the FastEmbed library to provide efficient text embedding and similarity search capabilities. It's designed for applications that need quick semantic search without the overhead of external database systems.
+FastEmbed VectorStore is a lightweight, fast vector database that leverages the power of Rust and the [FastEmbed library](https://github.com/Anush008/fastembed-rs) to provide efficient text embedding and similarity search capabilities. It's designed for applications that need quick semantic search without the overhead of external database systems.
 
 ## Features
 
@@ -31,7 +33,14 @@ The library supports a wide variety of embedding models:
 ### Prerequisites
 
 - Python 3.8 or higher
-- Rust toolchain (for building from source)
+- Rust toolchain (to build from source)
+
+
+### Install from PyPI
+
+```bash
+pip install fastembed-vectorstore
+```
 
 ### From Source
 
@@ -43,7 +52,7 @@ cd fastembed_vectorstore
 
 2. Install the package:
 ```bash
-pip install -e .
+maturin develop
 ```
 
 ## Quick Start
@@ -145,6 +154,6 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Acknowledgments
 
-- Built with [FastEmbed](https://github.com/qdrant/fastembed) for efficient text embeddings
+- Built with [FastEmbed](https://github.com/Anush008/fastembed-rs) for efficient text embeddings
 - Uses [PyO3](https://github.com/PyO3/pyo3) for Python-Rust bindings
 - Inspired by the need for fast, lightweight vector storage solutions 
