@@ -5,23 +5,37 @@ use pyo3::types::PyType;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
+use std::path::Path;
 
 use crate::embedding_model::FastembedEmbeddingModel;
 
+fn get_text_embedder(model: EmbeddingModel) -> Option<TextEmbedding> {
+    if let Ok(embedder) =
+        TextEmbedding::try_new(InitOptions::new(model).with_show_download_progress(true))
+    {
+        Some(embedder)
+    } else {
+        None
+    }
+}
+
 #[pyclass]
 pub struct FastembedVectorstore {
-    model: EmbeddingModel,
+    embedder: TextEmbedding,
     embeddings: HashMap<String, Vec<f32>>,
 }
 
 #[pymethods]
 impl FastembedVectorstore {
     #[new]
-    fn new(model: &FastembedEmbeddingModel) -> Self {
-        FastembedVectorstore {
-            model: model.to_embedding_model(),
+    fn new(model: &FastembedEmbeddingModel) -> PyResult<Self> {
+        let embedder = get_text_embedder(model.to_embedding_model())
+            .expect("Could not initialize TextEmbedding Model");
+
+        Ok(FastembedVectorstore {
+            embedder: embedder,
             embeddings: HashMap::new(),
-        }
+        })
     }
 
     #[classmethod]
@@ -35,8 +49,12 @@ impl FastembedVectorstore {
             let json_string = fs::read_to_string(path).expect("Failed to read file");
             let parsed_json: HashMap<String, Vec<f32>> =
                 serde_json::from_str(&json_string).expect("Failed to parse JSON");
+
+            let embedder = get_text_embedder(model.to_embedding_model())
+                .expect("Could not initialize TextEmbedding Model");
+
             return Ok(FastembedVectorstore {
-                model: model.to_embedding_model(),
+                embedder: embedder,
                 embeddings: parsed_json,
             });
         } else {
@@ -45,36 +63,24 @@ impl FastembedVectorstore {
     }
 
     fn embed_documents(&mut self, mut documents: Vec<String>) -> PyResult<bool> {
-        let model_result = TextEmbedding::try_new(
-            InitOptions::new(self.model.clone()).with_show_download_progress(true),
-        );
-        if let Ok(model) = model_result {
-            if let Ok(mut vec_embeddings) = model.embed(documents.clone(), None) {
-                loop {
-                    if documents.is_empty() {
-                        break;
-                    }
-                    if let (Some(popped_document), Some(popped_embedding)) =
-                        (documents.pop(), vec_embeddings.pop())
-                    {
-                        self.embeddings.insert(popped_document, popped_embedding);
-                    }
+        if let Ok(mut vec_embeddings) = self.embedder.embed(documents.clone(), None) {
+            loop {
+                if documents.is_empty() {
+                    break;
+                }
+                if let (Some(popped_document), Some(popped_embedding)) =
+                    (documents.pop(), vec_embeddings.pop())
+                {
+                    self.embeddings.insert(popped_document, popped_embedding);
                 }
             }
-        } else {
-            println!("Could not embed documents");
-            return Ok(false);
         }
         Ok(true)
     }
 
     fn search(&self, query: &str, n: usize) -> PyResult<Vec<(String, f32)>> {
-        let model = TextEmbedding::try_new(
-            InitOptions::new(self.model.clone()).with_show_download_progress(true),
-        )
-        .expect("Could not initialize model");
-
-        let query_embeddings = model
+        let query_embeddings = self
+            .embedder
             .embed(vec![query.to_string()], None)
             .expect("Could not embed query");
 
@@ -95,13 +101,13 @@ impl FastembedVectorstore {
 
     fn save(&self, path: &str) -> PyResult<bool> {
         if let Ok(serialized_json) = serde_json::to_string_pretty(&self.embeddings) {
-            match fs::create_dir_all(path) {
-                Ok(_) => {}
-                Err(e) => {
-                    println!("Error creating directory {}", e);
+            if let Some(parent) = Path::new(path).parent() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    println!("Error creating directory: {}", e);
                     return Ok(false);
                 }
             }
+
             if let Ok(mut save_file) = File::create(path) {
                 match save_file.write_all(serialized_json.as_bytes()) {
                     Ok(_) => {}
