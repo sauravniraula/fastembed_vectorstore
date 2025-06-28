@@ -4,12 +4,12 @@ build-backend = "maturin"
 
 [project]
 name = "fastembed_vectorstore"
-version = "0.1.3"
+version = "0.1.4"
 description = "A Rust-based in-memory vector store with fastembed"
 authors = [{ name = "sauravniraula", email = "developmentsaurav@gmail.com" }]
 readme = "README.md"
-license = { file = "LICENSE" }
-keywords = ["fastembed", "vector-store", "python", "rust"]
+license = "Apache-2.0"
+keywords = ["fastembed", "vectorstore", "python", "rust"]
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
@@ -17,6 +17,9 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
+[project.urls]
+Repository = "https://github.com/sauravniraula/fastembed-vectorstore"
+Issues = "https://github.com/sauravniraula/fastembed-vectorstore/issues"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
