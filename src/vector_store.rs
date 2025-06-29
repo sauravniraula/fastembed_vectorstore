@@ -102,32 +102,48 @@ impl FastembedVectorstore {
                 .embed(vec![query.to_string()], None)
                 .expect("Could not embed query"),
         );
-        let documents_embeddings: Vec<&Vec<f32>> = self.embeddings.values().collect();
+        let documents_embeddings: Vec<Vec<f32>> = self.embeddings.values().cloned().collect();
         let documents_length = documents_embeddings.len();
         let mut similarities = Vec::<(usize, f32)>::new();
+        let chunk_size = documents_length / 8;
         let mut index: usize = 0;
         let mut thread_handles = Vec::<JoinHandle<_>>::new();
+
         loop {
             if index >= documents_length {
                 break;
             }
             let query_embeddings_clone = query_embeddings.clone();
-            let document_embedding = documents_embeddings[index].clone();
+            let end_index = std::cmp::min(index + chunk_size, documents_length);
+            let chunk_embeddings: Vec<Vec<f32>> = documents_embeddings[index..end_index].to_vec();
+            let start_index = index;
+
             thread_handles.push(thread::spawn(move || {
-                (
-                    index,
-                    cosine_similarity(&query_embeddings_clone[0], &document_embedding),
-                )
+                let mut chunk_similarities = Vec::<(usize, f32)>::new();
+                let mut i = 0;
+                loop {
+                    if i >= chunk_embeddings.len() {
+                        break;
+                    }
+                    let doc_index = start_index + i;
+                    let similarity =
+                        cosine_similarity(&query_embeddings_clone[0], &chunk_embeddings[i]);
+                    chunk_similarities.push((doc_index, similarity));
+                    i += 1;
+                }
+                chunk_similarities
             }));
-            index += 1;
+            index += chunk_size;
         }
+
         index = 0;
         loop {
-            if index >= documents_length {
+            if index >= thread_handles.len() {
                 break;
             }
             if let Some(handle) = thread_handles.pop() {
-                similarities.push(handle.join().expect("Thread is not returning result"));
+                let chunk_result = handle.join().expect("Thread did not return result");
+                similarities.extend(chunk_result);
             }
             index += 1;
         }

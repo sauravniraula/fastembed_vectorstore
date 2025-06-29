@@ -71,4 +71,3 @@ docs/_build/
 # Pyenv
 .python-version
 .fastembed_cache
-test.py
