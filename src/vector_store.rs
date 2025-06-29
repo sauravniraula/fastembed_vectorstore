@@ -84,19 +84,26 @@ impl FastembedVectorstore {
             .embed(vec![query.to_string()], None)
             .expect("Could not embed query");
 
-        let mut similarities: Vec<(String, f32)> = self
+        let mut similarities: Vec<(usize, f32)> = self
             .embeddings
             .iter()
-            .map(|(document, embedding)| {
+            .enumerate()
+            .map(|(index, (_, embedding))| {
                 let similarity = self.cosine_similarity(&query_embeddings[0][..], embedding);
-                (document.clone(), similarity)
+                (index, similarity)
             })
             .collect();
 
         similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         similarities.truncate(n);
 
-        Ok(similarities)
+        let documents: Vec<&String> = self.embeddings.keys().collect();
+        let result: Vec<(String, f32)> = similarities
+            .into_iter()
+            .map(|(index, similarity)| (documents[index].clone(), similarity))
+            .collect();
+
+        Ok(result)
     }
 
     fn save(&self, path: &str) -> PyResult<bool> {
