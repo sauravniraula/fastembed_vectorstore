@@ -104,8 +104,12 @@ impl FastembedVectorstore {
         );
         let documents_embeddings: Vec<Vec<f32>> = self.embeddings.values().cloned().collect();
         let documents_length = documents_embeddings.len();
+        if documents_length == 0 {
+            return Ok(Vec::new());
+        }
         let mut similarities = Vec::<(usize, f32)>::new();
-        let chunk_size = documents_length / 8;
+        let available_threads = std::cmp::max(1, num_cpus::get());
+        let chunk_size = std::cmp::max(1, (documents_length + available_threads - 1) / available_threads);
         let mut index: usize = 0;
         let mut thread_handles = Vec::<JoinHandle<_>>::new();
 
@@ -136,16 +140,9 @@ impl FastembedVectorstore {
             index += chunk_size;
         }
 
-        index = 0;
-        loop {
-            if index >= thread_handles.len() {
-                break;
-            }
-            if let Some(handle) = thread_handles.pop() {
-                let chunk_result = handle.join().expect("Thread did not return result");
-                similarities.extend(chunk_result);
-            }
-            index += 1;
+        while let Some(handle) = thread_handles.pop() {
+            let chunk_result = handle.join().expect("Thread did not return result");
+            similarities.extend(chunk_result);
         }
 
         similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
