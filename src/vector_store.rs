@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
+use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 
 use crate::embedding_model::FastembedEmbeddingModel;
 
@@ -17,6 +19,22 @@ fn get_text_embedder(model: EmbeddingModel) -> Option<TextEmbedding> {
     } else {
         None
     }
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() {
+        return 0.0;
+    }
+
+    let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 0.0;
+    }
+
+    dot_product / (norm_a * norm_b)
 }
 
 #[pyclass]
@@ -79,20 +97,53 @@ impl FastembedVectorstore {
     }
 
     fn search(&self, query: &str, n: usize) -> PyResult<Vec<(String, f32)>> {
-        let query_embeddings = self
-            .embedder
-            .embed(vec![query.to_string()], None)
-            .expect("Could not embed query");
+        let query_embeddings = Arc::new(
+            self.embedder
+                .embed(vec![query.to_string()], None)
+                .expect("Could not embed query"),
+        );
+        let documents_embeddings: Vec<Vec<f32>> = self.embeddings.values().cloned().collect();
+        let documents_length = documents_embeddings.len();
+        if documents_length == 0 {
+            return Ok(Vec::new());
+        }
+        let mut similarities = Vec::<(usize, f32)>::new();
+        let available_threads = std::cmp::max(1, num_cpus::get());
+        let chunk_size = std::cmp::max(1, (documents_length + available_threads - 1) / available_threads);
+        let mut index: usize = 0;
+        let mut thread_handles = Vec::<JoinHandle<_>>::new();
 
-        let mut similarities: Vec<(usize, f32)> = self
-            .embeddings
-            .iter()
-            .enumerate()
-            .map(|(index, (_, embedding))| {
-                let similarity = self.cosine_similarity(&query_embeddings[0][..], embedding);
-                (index, similarity)
-            })
-            .collect();
+        loop {
+            if index >= documents_length {
+                break;
+            }
+            let query_embeddings_clone = query_embeddings.clone();
+            let end_index = std::cmp::min(index + chunk_size, documents_length);
+            let chunk_embeddings: Vec<Vec<f32>> = documents_embeddings[index..end_index].to_vec();
+            let start_index = index;
+
+            thread_handles.push(thread::spawn(move || {
+                let mut chunk_similarities = Vec::<(usize, f32)>::new();
+                let mut i = 0;
+                loop {
+                    if i >= chunk_embeddings.len() {
+                        break;
+                    }
+                    let doc_index = start_index + i;
+                    let similarity =
+                        cosine_similarity(&query_embeddings_clone[0], &chunk_embeddings[i]);
+                    chunk_similarities.push((doc_index, similarity));
+                    i += 1;
+                }
+                chunk_similarities
+            }));
+            index += chunk_size;
+        }
+
+        while let Some(handle) = thread_handles.pop() {
+            let chunk_result = handle.join().expect("Thread did not return result");
+            similarities.extend(chunk_result);
+        }
 
         similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         similarities.truncate(n);
@@ -129,23 +180,5 @@ impl FastembedVectorstore {
             return Ok(false);
         }
         Ok(true)
-    }
-}
-
-impl FastembedVectorstore {
-    fn cosine_similarity(&self, a: &[f32], b: &[f32]) -> f32 {
-        if a.len() != b.len() {
-            return 0.0;
-        }
-
-        let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-        if norm_a == 0.0 || norm_b == 0.0 {
-            return 0.0;
-        }
-
-        dot_product / (norm_a * norm_b)
     }
 }
