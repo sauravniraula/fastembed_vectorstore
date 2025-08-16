@@ -9,8 +9,7 @@ name = "fastembed_vectorstore"
 crate-type = ["cdylib"]
 
 [dependencies]
-fastembed = "4.9.1"
+fastembed = { version = "4.9.1", default-features = false, features = ["hf-hub", "ort-download-binaries"] }
 pyo3 = "0.25.0"
 serde_json = "1.0.140"
 num_cpus = "1.16.0"
-openssl = { version = "0.10", features = ["vendored"] }
